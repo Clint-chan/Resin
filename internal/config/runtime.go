@@ -25,6 +25,8 @@ type RuntimeConfig struct {
 	// Probe
 	LatencyTestURL     string   `json:"latency_test_url"`
 	LatencyAuthorities []string `json:"latency_authorities"`
+	EgressProbeURL     string   `json:"egress_probe_url"`
+	EgressProbeFormat  string   `json:"egress_probe_format"`
 
 	// P2C
 	P2CLatencyWindow   Duration `json:"p2c_latency_window"`
@@ -55,6 +57,8 @@ func NewDefaultRuntimeConfig() *RuntimeConfig {
 
 		LatencyTestURL:     "https://www.gstatic.com/generate_204",
 		LatencyAuthorities: []string{"gstatic.com", "google.com", "cloudflare.com", "github.com"},
+		EgressProbeURL:     "https://cloudflare.com/cdn-cgi/trace",
+		EgressProbeFormat:  "cloudflare_trace",
 
 		P2CLatencyWindow:   Duration(10 * time.Minute),
 		LatencyDecayWindow: Duration(10 * time.Minute),

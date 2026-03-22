@@ -65,7 +65,7 @@ func TestProbeEgress_Success(t *testing.T) {
 		t.Fatalf("egress region: got %q, want %q", got, "us")
 	}
 
-	// Verify RecordLatency for cloudflare.com.
+	// Verify RecordLatency for the default egress probe domain.
 	if !entry.HasLatency() {
 		t.Fatal("expected latency data")
 	}
@@ -245,6 +245,50 @@ func TestProbeEgress_ZeroLatencyIgnored(t *testing.T) {
 	}
 	if got := entry.GetEgressIP(); got != netip.MustParseAddr("203.0.113.1") {
 		t.Fatalf("egress IP: got %v, want 203.0.113.1", got)
+	}
+}
+
+func TestProbeEgress_CustomPlainIPURL(t *testing.T) {
+	pool := topology.NewGlobalNodePool(topology.PoolConfig{
+		MaxLatencyTableEntries: 16,
+		MaxConsecutiveFailures: func() int { return 3 },
+	})
+
+	hash := node.HashFromRawOptions([]byte(`{"type":"egress-plain-ip"}`))
+	pool.AddNodeFromSub(hash, []byte(`{"type":"egress-plain-ip"}`), "sub1")
+
+	entry, ok := pool.GetEntry(hash)
+	if !ok {
+		t.Fatal("entry not found")
+	}
+	storeOutbound(entry)
+
+	mgr := NewProbeManager(ProbeConfig{
+		Pool: pool,
+		Fetcher: func(_ node.Hash, url string) ([]byte, time.Duration, error) {
+			if url != "https://api.ipify.org" {
+				t.Fatalf("fetch url = %q, want %q", url, "https://api.ipify.org")
+			}
+			return []byte("198.51.100.7\n"), 15 * time.Millisecond, nil
+		},
+		EgressProbeURL:    func() string { return "https://api.ipify.org" },
+		EgressProbeFormat: func() string { return "plain_ip" },
+	})
+
+	mgr.probeEgress(hash, entry)
+
+	if got := entry.GetEgressIP(); got != netip.MustParseAddr("198.51.100.7") {
+		t.Fatalf("egress IP: got %v, want 198.51.100.7", got)
+	}
+	if !entry.HasLatency() {
+		t.Fatal("expected latency data")
+	}
+	stats, ok := entry.LatencyTable.GetDomainStats("ipify.org")
+	if !ok {
+		t.Fatal("expected ipify.org latency entry")
+	}
+	if stats.Ewma != 15*time.Millisecond {
+		t.Fatalf("ewma: got %v, want %v", stats.Ewma, 15*time.Millisecond)
 	}
 }
 
@@ -879,7 +923,7 @@ func TestProbeSync_EmitsProbeEvents(t *testing.T) {
 		Pool: pool,
 		Fetcher: func(_ node.Hash, url string) ([]byte, time.Duration, error) {
 			switch url {
-			case egressTraceURL:
+			case defaultEgressProbeURL:
 				return []byte("ip=198.51.100.10"), 20 * time.Millisecond, nil
 			default:
 				return []byte("ok"), 30 * time.Millisecond, nil

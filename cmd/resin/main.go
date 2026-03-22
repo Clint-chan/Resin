@@ -306,6 +306,12 @@ func newTopologyRuntime(
 		LatencyAuthorities: func() []string {
 			return runtimeConfigSnapshot(runtimeCfg).LatencyAuthorities
 		},
+		EgressProbeURL: func() string {
+			return runtimeConfigSnapshot(runtimeCfg).EgressProbeURL
+		},
+		EgressProbeFormat: func() string {
+			return runtimeConfigSnapshot(runtimeCfg).EgressProbeFormat
+		},
 	})
 
 	pool.SetOnNodeAdded(func(hash node.Hash) {

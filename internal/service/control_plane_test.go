@@ -109,6 +109,18 @@ func TestValidateRuntimeConfig_InvalidURL(t *testing.T) {
 	if err := validateRuntimeConfig(cfg); err == nil {
 		t.Error("expected error for empty LatencyTestURL")
 	}
+
+	cfg = newDefaultCfg()
+	cfg.EgressProbeURL = "not a url"
+	if err := validateRuntimeConfig(cfg); err == nil {
+		t.Error("expected error for invalid EgressProbeURL")
+	}
+
+	cfg = newDefaultCfg()
+	cfg.EgressProbeURL = ""
+	if err := validateRuntimeConfig(cfg); err == nil {
+		t.Error("expected error for empty EgressProbeURL")
+	}
 }
 
 func TestValidateRuntimeConfig_ProbeIntervalsMinimum30s(t *testing.T) {
@@ -168,6 +180,14 @@ func TestValidateRuntimeConfig_LatencyURLDoesNotDuplicateAuthority(t *testing.T)
 	}
 	if len(cfg.LatencyAuthorities) != 1 {
 		t.Fatalf("expected no duplicate authority, got %v", cfg.LatencyAuthorities)
+	}
+}
+
+func TestValidateRuntimeConfig_InvalidEgressProbeFormat(t *testing.T) {
+	cfg := newDefaultCfg()
+	cfg.EgressProbeFormat = "broken"
+	if err := validateRuntimeConfig(cfg); err == nil {
+		t.Error("expected error for invalid EgressProbeFormat")
 	}
 }
 

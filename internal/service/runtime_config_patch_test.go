@@ -427,3 +427,21 @@ func TestPatchRuntimeConfig_LatencyTestURLAutoAddsAuthority(t *testing.T) {
 		t.Fatalf("expected gstatic.com to be auto-added, got %v", updated.LatencyAuthorities)
 	}
 }
+
+func TestPatchRuntimeConfig_EgressProbeFields(t *testing.T) {
+	h := newPatchHarness(t)
+
+	updated, err := h.cp.PatchRuntimeConfig([]byte(`{
+		"egress_probe_url": "https://api.ipify.org",
+		"egress_probe_format": "plain_ip"
+	}`))
+	if err != nil {
+		t.Fatalf("PatchRuntimeConfig: %v", err)
+	}
+	if updated.EgressProbeURL != "https://api.ipify.org" {
+		t.Fatalf("EgressProbeURL = %q, want %q", updated.EgressProbeURL, "https://api.ipify.org")
+	}
+	if updated.EgressProbeFormat != "plain_ip" {
+		t.Fatalf("EgressProbeFormat = %q, want %q", updated.EgressProbeFormat, "plain_ip")
+	}
+}

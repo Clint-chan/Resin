@@ -5,6 +5,7 @@ import (
 	"log"
 	"math/rand/v2"
 	"net/netip"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -39,6 +40,8 @@ type ProbeConfig struct {
 
 	LatencyTestURL     func() string
 	LatencyAuthorities func() []string
+	EgressProbeURL     func() string
+	EgressProbeFormat  func() string
 
 	// OnProbeEvent is called after each probe attempt completes (egress or latency).
 	// The kind parameter is "egress" or "latency".
@@ -67,14 +70,16 @@ type ProbeManager struct {
 	maxAuthorityLatencyTestInterval func() time.Duration
 	latencyTestURL                  func() string
 	latencyAuthorities              func() []string
+	egressProbeURL                  func() string
+	egressProbeFormat               func() string
 	onProbeEvent                    func(kind string)
 }
 
 const (
-	egressTraceURL        = "https://cloudflare.com/cdn-cgi/trace"
-	egressTraceDomain     = "cloudflare.com"
-	defaultLatencyTestURL = "https://www.gstatic.com/generate_204"
-	defaultQueueCap       = 1024
+	defaultEgressProbeURL    = "https://cloudflare.com/cdn-cgi/trace"
+	defaultEgressProbeFormat = "cloudflare_trace"
+	defaultLatencyTestURL    = "https://www.gstatic.com/generate_204"
+	defaultQueueCap          = 1024
 )
 
 type probePriority uint8
@@ -269,6 +274,8 @@ func NewProbeManager(cfg ProbeConfig) *ProbeManager {
 		maxAuthorityLatencyTestInterval: cfg.MaxAuthorityLatencyTestInterval,
 		latencyTestURL:                  cfg.LatencyTestURL,
 		latencyAuthorities:              cfg.LatencyAuthorities,
+		egressProbeURL:                  cfg.EgressProbeURL,
+		egressProbeFormat:               cfg.EgressProbeFormat,
 		onProbeEvent:                    cfg.OnProbeEvent,
 	}
 }
@@ -368,10 +375,11 @@ func (m *ProbeManager) ProbeEgressSync(hash node.Hash) (*EgressProbeResult, erro
 		return nil, fmt.Errorf("egress probe failed: %w", err)
 	}
 
-	// Read back EWMA for cloudflare.com from the latency table.
+	// Read back EWMA for the configured egress probe domain from the latency table.
 	var ewmaMs float64
-	if entry.LatencyTable != nil {
-		if stats, ok := entry.LatencyTable.GetDomainStats(egressTraceDomain); ok {
+	egressDomain := netutil.ExtractDomain(m.currentEgressProbeURL())
+	if entry.LatencyTable != nil && egressDomain != "" {
+		if stats, ok := entry.LatencyTable.GetDomainStats(egressDomain); ok {
 			ewmaMs = float64(stats.Ewma) / float64(time.Millisecond)
 		}
 	}
@@ -782,7 +790,8 @@ func (m *ProbeManager) probeLatency(hash node.Hash, entry *node.NodeEntry, testU
 }
 
 func (m *ProbeManager) performEgressProbe(hash node.Hash) (netip.Addr, egressProbeErrorStage, error) {
-	body, latency, err := m.fetcher(hash, egressTraceURL)
+	probeURL := m.currentEgressProbeURL()
+	body, latency, err := m.fetcher(hash, probeURL)
 	if err != nil {
 		m.pool.RecordResult(hash, false)
 		m.pool.UpdateNodeEgressIP(hash, nil, nil)
@@ -791,10 +800,12 @@ func (m *ProbeManager) performEgressProbe(hash node.Hash) (netip.Addr, egressPro
 
 	m.pool.RecordResult(hash, true)
 	if latency > 0 {
-		m.pool.RecordLatency(hash, egressTraceDomain, &latency)
+		if domain := netutil.ExtractDomain(probeURL); domain != "" {
+			m.pool.RecordLatency(hash, domain, &latency)
+		}
 	}
 
-	ip, loc, err := ParseCloudflareTrace(body)
+	ip, loc, err := ParseEgressProbe(body, m.currentEgressProbeFormat())
 	if err != nil {
 		m.pool.UpdateNodeEgressIP(hash, nil, nil)
 		return netip.Addr{}, egressProbeParseError, err
@@ -820,7 +831,29 @@ func (m *ProbeManager) performLatencyProbe(hash node.Hash, testURL string) error
 func (m *ProbeManager) currentLatencyTestURL() string {
 	testURL := defaultLatencyTestURL
 	if m.latencyTestURL != nil {
-		testURL = m.latencyTestURL()
+		if trimmed := strings.TrimSpace(m.latencyTestURL()); trimmed != "" {
+			testURL = trimmed
+		}
 	}
 	return testURL
+}
+
+func (m *ProbeManager) currentEgressProbeURL() string {
+	probeURL := defaultEgressProbeURL
+	if m.egressProbeURL != nil {
+		if trimmed := strings.TrimSpace(m.egressProbeURL()); trimmed != "" {
+			probeURL = trimmed
+		}
+	}
+	return probeURL
+}
+
+func (m *ProbeManager) currentEgressProbeFormat() string {
+	format := defaultEgressProbeFormat
+	if m.egressProbeFormat != nil {
+		if trimmed := strings.TrimSpace(m.egressProbeFormat()); trimmed != "" {
+			format = trimmed
+		}
+	}
+	return format
 }

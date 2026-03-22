@@ -231,7 +231,7 @@ func (s *ControlPlaneService) ProbeEgress(hashStr string) (*probe.EgressProbeRes
 	}
 	result, err := s.ProbeMgr.ProbeEgressSync(h)
 	if err != nil {
-		return nil, internal("egress probe failed", err)
+		return nil, internal("egress probe failed: "+err.Error(), err)
 	}
 	result.Region = entry.GetRegion(nil)
 	if s.GeoIP != nil {
@@ -251,7 +251,7 @@ func (s *ControlPlaneService) ProbeLatency(hashStr string) (*probe.LatencyProbeR
 	}
 	result, err := s.ProbeMgr.ProbeLatencySync(h)
 	if err != nil {
-		return nil, internal("latency probe failed", err)
+		return nil, internal("latency probe failed: "+err.Error(), err)
 	}
 	return result, nil
 }

@@ -84,6 +84,8 @@ var runtimeConfigAllowedFields = map[string]bool{
 	"max_egress_test_interval":                 true,
 	"latency_test_url":                         true,
 	"latency_authorities":                      true,
+	"egress_probe_url":                         true,
+	"egress_probe_format":                      true,
 	"p2c_latency_window":                       true,
 	"latency_decay_window":                     true,
 	"cache_flush_interval":                     true,
@@ -194,6 +196,15 @@ func validateRuntimeConfig(cfg *config.RuntimeConfig) *ServiceError {
 	u, verr := parseHTTPAbsoluteURL("latency_test_url", latencyURL)
 	if verr != nil {
 		return verr
+	}
+	egressProbeURL := strings.TrimSpace(cfg.EgressProbeURL)
+	if _, verr := parseHTTPAbsoluteURL("egress_probe_url", egressProbeURL); verr != nil {
+		return verr
+	}
+	switch strings.TrimSpace(cfg.EgressProbeFormat) {
+	case "cloudflare_trace", "plain_ip", "json_ip":
+	default:
+		return invalidArg("egress_probe_format: must be cloudflare_trace, plain_ip, or json_ip")
 	}
 	latencyDomain := strings.ToLower(netutil.ExtractDomain(u.Host))
 	if cfg.MaxConsecutiveFailures < 0 {
